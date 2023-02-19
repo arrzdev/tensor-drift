@@ -2,11 +2,9 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.layers import Dense, Dropout, Flatten
 from tensorflow.keras import backend as K
+import tensorflow as tf
 
 def create_model(keep_prob = 0.8 , input_shape = None, output_shape = None):
-  if input_shape is None or output_shape is None:
-    raise ValueError("Model input and output shapes must be specified")
-
   model = Sequential()
 
   # NVIDIA's model
@@ -33,9 +31,11 @@ def customized_loss(y_true, y_pred, loss='euclidean'):
   # Simply a mean squared error that penalizes large joystick summed values
   if loss == 'L2':
     L2_norm_cost = 0.001
-    val = K.mean(K.square((y_pred - y_true)), axis=-1) \
+    y_true_float = K.cast(y_true, dtype=tf.float32)
+    val = K.mean(K.square((y_pred - y_true_float)), axis=-1) \
       + K.sum(K.square(y_pred), axis=-1)/2 * L2_norm_cost
   # euclidean distance loss
   elif loss == 'euclidean':
-    val = K.sqrt(K.sum(K.square(y_pred-y_true), axis=-1))
+    y_true_float = K.cast(y_true, dtype=tf.float32)
+    val = K.sqrt(K.sum(K.square(y_pred-y_true_float), axis=-1))
   return val
