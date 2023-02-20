@@ -3,6 +3,12 @@ from PIL import Image
 import numpy as np  
 import shutil
 import time
+import cv2
+import win32api
+import win32con
+import win32gui
+import time
+from PIL import ImageGrab
 
 #idk
 import mss
@@ -11,7 +17,7 @@ from keras import optimizers
 from tensorflow.keras.callbacks import ModelCheckpoint
 
 ####
-#from utils.screen import screenshot
+from utils.screen import screenshot
 from utils.imaging import resize_image
 from utils.wheel import WheelController
 from utils.keyboard import KeyboardController, read_keys 
@@ -37,11 +43,13 @@ OUTPUT = 3
 
 class Agent:
   def __init__(self):   
-    self.sample_path = "./samples"
+    self.sample_path = "./samples2"
     self.data_path = "./data"
+    self.game_region = region=(0, 25, 1920, 1030)
 
     self.screenshot_manager = mss.mss()
     self.framesc = 0
+    self.recording = False
 
     self.wheel_controller = WheelController()
     self.keyboard_controller = KeyboardController()
@@ -49,81 +57,80 @@ class Agent:
 
     self.keyboard_controller_data = [0, 0, 0]
 
-  #### RECORD ####
+### RECORDING ###
   def record(self):
     # check that a dir has been specified
     if not self.sample_path:
-      print("WRONG OUTPUT DIR")
-      return
-    
-    if os.path.exists(self.sample_path):
-      if not prompt("Directory already exists. Overwrite? (y/n)"):
-        #continue from last frame
-        for file in os.listdir(self.sample_path):
-          if file.endswith(IMAGE_TYPE):
-            frame_index = int(file.split("_")[-1].split(".")[0])
-            if frame_index >= self.framesc:
-              self.framesc = frame_index + 1
-        if self.framesc > 0:
-          print(f"Continuing from frame {self.framesc}")
+        print("WRONG OUTPUT DIR")
+        return
 
-      else:
-        #delete dir
-        shutil.rmtree(self.sample_path, ignore_errors=True)
+    if os.path.exists(self.sample_path):
+        if not prompt("Directory already exists. Overwrite? (y/n)"):
+            #continue from last frame
+            for file in os.listdir(self.sample_path):
+                if file.endswith(IMAGE_TYPE):
+                    frame_index = int(file.split("_")[-1].split(".")[0])
+                    if frame_index >= self.framesc:
+                        self.framesc = frame_index + 1
+            if self.framesc > 0:
+                print(f"Continuing from frame {self.framesc}")
+        else:
+            #delete dir
+            shutil.rmtree(self.sample_path, ignore_errors=True)
+            #create dir
+            os.mkdir(self.sample_path)
+    else:
         #create dir
         os.mkdir(self.sample_path)
-    else:
-      #create dir
-      os.mkdir(self.sample_path)
-    
-    #open file
-    self.inputs = open(f"{self.sample_path}/inputs.csv", 'a') #open file
 
-    #record
-    #wait for H to start recording
-    print("Press H to start recording")
-    recording = False
-    while True:
-      self.take_screenshot() #take screenshot
+    # open file
+    inputs_path = f"{self.sample_path}/inputs.csv"
+    with open(inputs_path, "a") as self.inputs:
+        # wait for H to start recording
+        print("Press H to start recording.")
+        while True:
+            keys = read_keys([ord("H")])
+            if keys:
+                if self.recording:  # already recording
+                    print("Recording stopped.")
+                    self.recording = False
+                    return
+                else:  # start recording
+                    print("Starting recording in 3 seconds...")
+                    time.sleep(3)
+                    print("Recording started.")
+                    self.recording = True
 
-      if recording: #already recording
-        #stop recording condition
-        if len(read_keys([ord("H")])):
-          break
-
-        self.keyboard_controller_data = self.keyboard_controller.read()
-        print(self.keyboard_controller_data)
-        self.save_data()
-        self.framesc += 1
-      
-      elif len(read_keys([ord("H")])): #start recording
-        recording = True
-        print("Starting recording in 3 seconds...")
-        time.sleep(3)
-        print("Recording started")
-        continue
-
-    print("Recording stopped")
-    self.inputs.close() #close file
+            if self.recording:
+                self.screenshot = screenshot(self.game_region)
+                self.keyboard_controller_data = self.keyboard_controller.read() # read controller data
+                print(self.keyboard_controller_data)
+                if not self.save_data():
+                    print("Error saving data")
+                    return
+                # use image object for model
+                self.framesc += 1
 
   def take_screenshot(self):
-    # Get raw pixels from the screen
-    sct_img = self.screenshot_manager.grab({
-      "top": 30,
-      "left": 0,
-      "width": 1920,
-      "height": 1000
-    })
-
-    # Create the Image
-    self.screenshot = Image.frombytes('RGB', sct_img.size, sct_img.bgra, 'raw', 'BGRX')
+    hwnd = win32gui.GetForegroundWindow()
+    rect = win32gui.GetWindowRect(hwnd)
+    x, y, width, height = rect
+    x += 10  # Remove the left bar
+    y += 32  # Increase the y value to remove the top bar
+    width -= 16
+    height -= 50  # Decrease the height to remove the top bar and bottom taskbar
+    screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
+    return screenshot
   
   def save_data(self):
-    image_file = self.sample_path+'/'+'img_'+str(self.framesc)+IMAGE_TYPE
-    self.screenshot.save(image_file) 
-    
-    # write csv line
-    self.inputs.write(image_file + ',' + ','.join(map(str, self.keyboard_controller_data)) + '\n')
+    image_file = f"{self.sample_path}/img_{self.framesc}{IMAGE_TYPE}"
+    saved = cv2.imwrite(image_file, self.screenshot)
+
+    if saved:
+      # write csv line
+      self.inputs.write(image_file + ',' + ','.join(map(str, self.keyboard_controller_data)) + '\n')
+
+    return saved
 
   #### PREPROCESS ####
   def pre_process(self):
@@ -166,7 +173,7 @@ class Agent:
 
     self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
     
-    checkpoint = ModelCheckpoint('model_weights.h5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    checkpoint = ModelCheckpoint('model_weights.h3', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks_list = [checkpoint]
     
     self.model.compile(loss=customized_loss, optimizer=optimizers.Adam())
@@ -176,13 +183,18 @@ class Agent:
   def play(self):
     # Load the trained model
     model = create_model(keep_prob=1, sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
-    model.load_weights('model_weights.h5')
+    model.load_weights('model_weights.h3')
 
     # Play the game
     while True:
+      if any(self.wheel_controller.read()):
+        print("User interacting with the wheel. Ignoring AI prediction.")
+        self.emulator.sync_controller()
+        continue
+
       # Get the current state
-      self.take_screenshot()
-      state = resize_image(self.screenshot, SAMPLE)
+      ss = self.take_screenshot()
+      state = resize_image(ss, SAMPLE)
       state = np.expand_dims(state, axis=0)
 
       # Use the model to predict the next state

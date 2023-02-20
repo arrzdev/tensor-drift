@@ -15,7 +15,6 @@ class EmulatorEngine():
     self.state = state
           
   def sync_controller(self):
-    print("Sync")
     self.edit_state("release", self.state)
     self.state = [0,0,0]    
           
