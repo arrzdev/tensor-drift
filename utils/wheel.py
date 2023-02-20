@@ -32,7 +32,12 @@ class WheelController(object):
 
   def _monitor_controller(self):
     while True:
-      events = inputs.get_gamepad()
+      try:
+        events = inputs.get_gamepad()
+      except:
+        print("Error reading controller")
+        return
+        
       for event in events:
         #print(event.ev_type, event.code, event.state)
         if event.code == self.WHEEL_ANGLE_CODE: #wheel angle

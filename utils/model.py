@@ -38,4 +38,13 @@ def customized_loss(y_true, y_pred, loss='euclidean'):
   elif loss == 'euclidean':
     y_true_float = K.cast(y_true, dtype=tf.float32)
     val = K.sqrt(K.sum(K.square(y_pred-y_true_float), axis=-1))
+  elif loss == 'experimental':
+    # Set alpha to control the importance of larger deviations
+    alpha = 0.5
+    # Compute the mean squared error between true and predicted values
+    mse = tf.reduce_mean(tf.square(y_true - y_pred), axis=-1)
+    # Compute the weight for each sample based on the absolute error
+    weights = tf.math.abs(y_true - y_pred) * alpha + 1.0
+    # Compute the weighted mean squared error
+    val = tf.reduce_mean(tf.multiply(mse, weights), axis=-1)
   return val

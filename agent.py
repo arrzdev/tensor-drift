@@ -15,6 +15,7 @@ import mss
 
 from keras import optimizers
 from tensorflow.keras.callbacks import ModelCheckpoint
+from tensorflow.keras.models import load_model
 
 ####
 from utils.screen import screenshot
@@ -43,9 +44,10 @@ OUTPUT = 3
 
 class Agent:
   def __init__(self):   
-    self.sample_path = "./samples2"
+    self.sample_path = "./samples"
     self.data_path = "./data"
-    self.game_region = region=(0, 25, 1920, 1030)
+    self.game_region = (0, 25, 1920, 1030)
+    self.model_path = "./model_weights.h3"
 
     self.screenshot_manager = mss.mss()
     self.framesc = 0
@@ -141,23 +143,28 @@ class Agent:
     num_samples = len(image_files)
     print(f"Found {num_samples} samples")
 
-    #init arrays
+    try:
+      X = np.load(f"{self.data_path}/X.npy")
+      num_processed = X.shape[::][0]
+      X.resize((num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT))
+    except:
+        X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT), dtype=np.float32)
+        num_processed = 0
+
     y = np.loadtxt(f"{self.sample_path}/inputs.csv", delimiter=',', usecols=(1,2,3)) 
-    X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT), dtype=np.float32)
 
-    #prepare input data (images)
-    for idx, image_file in enumerate(image_files):
-      print(f"Processing image {idx+1}/{num_samples}")
-      image = imread(image_file)
-      vec = resize_image(image, SAMPLE)
-      X[idx] = vec
+    #process the new images starting on img_{X.shape[0]}
+    for i in range(num_processed, num_samples):
+      print(f"Processing image {i+1}/{num_samples}")
+      image = imread(image_files[i])
+      image = resize_image(image, SAMPLE)
+      X[i] = image
 
-    print("Saving to file...")
-
+    #save the new arrays
     np.save(f"{self.data_path}/X.npy", X)
     np.save(f"{self.data_path}/y.npy", y)
 
-    print("Done!")
+    print("Data prepared")
 
   def train(self):
     print("STARTING TRAINING")
@@ -168,22 +175,33 @@ class Agent:
     print(x_train.shape[0], 'train samples')
 
     # Training loop variables
-    epochs = 100
-    batch_size = 50
+    epochs = 150
+    batch_size = 30
 
-    self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
-    
-    checkpoint = ModelCheckpoint('model_weights.h3', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
-    callbacks_list = [checkpoint]
+    #check if model exists
+    if os.path.exists(self.model_path):
+      if not prompt("Model already exists. Overwrite? (y/n)"):
+        self.model = load_model(self.model_path, custom_objects={'customized_loss': customized_loss})
+        #continue from last frame
+        print("Continuing from last model")
+      else:
+        #delete dir
+        os.remove(self.model_path)
+        #create dir
+        print("Creating new model")
+        self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
+  
+    #set up callbacks 
+    checkpoint = ModelCheckpoint(self.model_path, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     
     self.model.compile(loss=customized_loss, optimizer=optimizers.Adam())
-    self.model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, shuffle=True, validation_split=0.1, callbacks=callbacks_list)
+    self.model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, shuffle=True, validation_split=0.1, callbacks=[checkpoint])
 
   #### PLAY ####
   def play(self):
     # Load the trained model
     model = create_model(keep_prob=1, sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
-    model.load_weights('model_weights.h3')
+    model.load_weights(self.model_path)
 
     # Play the game
     while True:
