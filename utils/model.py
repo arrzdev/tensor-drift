@@ -4,11 +4,11 @@ from tensorflow.keras.layers import Dense, Dropout, Flatten
 from tensorflow.keras import backend as K
 import tensorflow as tf
 
-def create_model(keep_prob = 0.8 , input_shape = None, output_shape = None):
+def create_model(keep_prob=0.8 , sinput=None, soutput=None):
   model = Sequential()
 
   # NVIDIA's model
-  model.add(Conv2D(24, kernel_size=(5, 5), strides=(2, 2), activation='relu', input_shape=input_shape))
+  model.add(Conv2D(24, kernel_size=(5, 5), strides=(2, 2), activation='relu', input_shape=sinput))
   model.add(Conv2D(36, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
   model.add(Conv2D(48, kernel_size=(5, 5), strides=(2, 2), activation='relu'))
   model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
@@ -23,7 +23,7 @@ def create_model(keep_prob = 0.8 , input_shape = None, output_shape = None):
   model.add(Dropout(drop_out))
   model.add(Dense(10, activation='relu'))
   model.add(Dropout(drop_out))
-  model.add(Dense(output_shape, activation='softsign'))
+  model.add(Dense(soutput, activation='softsign'))
 
   return model
 

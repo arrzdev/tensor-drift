@@ -1,37 +1,48 @@
 import os 
-import cv2
 from PIL import Image
 import numpy as np  
 import shutil
-import random
 import time
+
+#idk
+import mss
 
 from keras import optimizers
 from tensorflow.keras.callbacks import ModelCheckpoint
 
 ####
-from utils.screen import screenshot
+#from utils.screen import screenshot
+from utils.imaging import resize_image
 from utils.wheel import WheelController
 from utils.keyboard import KeyboardController, read_keys 
 from utils.interact import prompt
 from utils.model import create_model, customized_loss
 from utils.emulator import EmulatorEngine
 
+###
+from skimage.io import imread
+
+
 #RECORDING VARS
-IMAGE_SIZE = (640, 480)
-SAMPLE_SIZE = (200, 66)
 IMAGE_TYPE = ".png"
 
 #MODEL VARS
-INPUT_SHAPE = (66, 200, 3)
-OUT_SHAPE = 3
+SAMPLE = {
+  "img_h": 66,
+  "img_w": 200,
+  "img_d": 3
+}
+
+OUTPUT = 3
 
 class Agent:
-  def __init__(self):
-    self.path = "./pata"
+  def __init__(self):   
+    self.sample_path = "./samples"
+    self.data_path = "./data"
+
+    self.screenshot_manager = mss.mss()
     self.framesc = 0
 
-    self.frames_info = []
     self.wheel_controller = WheelController()
     self.keyboard_controller = KeyboardController()
     self.emulator = EmulatorEngine(self.keyboard_controller) #receives controller
@@ -41,14 +52,14 @@ class Agent:
   #### RECORD ####
   def record(self):
     # check that a dir has been specified
-    if not self.path:
+    if not self.sample_path:
       print("WRONG OUTPUT DIR")
       return
     
-    if os.path.exists(self.path):
+    if os.path.exists(self.sample_path):
       if not prompt("Directory already exists. Overwrite? (y/n)"):
         #continue from last frame
-        for file in os.listdir(self.path):
+        for file in os.listdir(self.sample_path):
           if file.endswith(IMAGE_TYPE):
             frame_index = int(file.split("_")[-1].split(".")[0])
             if frame_index >= self.framesc:
@@ -56,34 +67,24 @@ class Agent:
         if self.framesc > 0:
           print(f"Continuing from frame {self.framesc}")
 
-        self.frames_info = np.load(f"{self.path}/y.npy")
       else:
         #delete dir
-        shutil.rmtree(self.path, ignore_errors=True)
+        shutil.rmtree(self.sample_path, ignore_errors=True)
         #create dir
-        os.mkdir(self.path)
+        os.mkdir(self.sample_path)
     else:
       #create dir
-      os.mkdir(self.path)
+      os.mkdir(self.sample_path)
     
     #open file
-    #self.inputs = open(f"{self.path}/inputs.csv", 'a') #open file
+    self.inputs = open(f"{self.sample_path}/inputs.csv", 'a') #open file
 
     #record
     #wait for H to start recording
     print("Press H to start recording")
     recording = False
     while True:
-      self.get_frame()
-
-      # Convert PIL Image to NumPy array
-      frame_np = np.array(self.frame)
-      # Convert RGB to BGR
-      frame_np = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
-      frame_np = cv2.resize(frame_np, (1060, 650))
-
-      cv2.imshow("AI Peak", frame_np)
-      cv2.waitKey(1)
+      self.take_screenshot() #take screenshot
 
       if recording: #already recording
         #stop recording condition
@@ -103,62 +104,59 @@ class Agent:
         continue
 
     print("Recording stopped")
-    np.save(f"{self.path}/y.npy", self.frames_info)
-    #self.inputs.close() #close file
+    self.inputs.close() #close file
 
-  def get_frame(self):
-    ss = screenshot(region=(0, 20, 1920, 1040))
-    self.frame = Image.fromarray(cv2.cvtColor(ss, cv2.COLOR_BGR2RGB))
+  def take_screenshot(self):
+    # Get raw pixels from the screen
+    sct_img = self.screenshot_manager.grab({
+      "top": 30,
+      "left": 0,
+      "width": 1920,
+      "height": 1000
+    })
 
-  def clean_frame(self):
-    # define color range for green (in HSV)
-    lower_green = np.array([40, 40, 40])
-    upper_green = np.array([70, 255, 255])
-
-    # load image and convert to HSV color space
-    hsv = cv2.cvtColor(self.frame, cv2.COLOR_BGR2HSV)
-
-    # apply color mask to isolate green pixels
-    mask = cv2.inRange(hsv, lower_green, upper_green)
-
-    # invert the mask to keep everything except the green pixels
-    mask_inv = cv2.bitwise_not(mask)
-
-    # apply the mask to the original image to remove the green pixels
-    result = cv2.bitwise_and(self.frame, self.frame, mask=mask_inv)
-
-    # apply Gaussian blur to remove noise
-    result_blur = cv2.GaussianBlur(result, (3, 3), 0)
-
-    # convert to grayscale and apply Canny edge detection
-    gray = cv2.cvtColor(result_blur, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, threshold1=50, threshold2=150)
-
-    self.frame = edges
-
-  def resize_frame(self):
-    # Resize the image to the specified dimensions
-    im = cv2.resize(self.frame, INPUT_SHAPE[:2], interpolation=cv2.INTER_AREA)
-    # Convert the resized image to an array and reshape it
-    self.frame = im.reshape(INPUT_SHAPE)
-
+    # Create the Image
+    self.screenshot = Image.frombytes('RGB', sct_img.size, sct_img.bgra, 'raw', 'BGRX')
+  
   def save_data(self):
-    image_file = f"{self.path}/f_{str(self.framesc)}{IMAGE_TYPE}"
+    image_file = self.sample_path+'/'+'img_'+str(self.framesc)+IMAGE_TYPE
+    self.screenshot.save(image_file) 
+    
+    # write csv line
+    self.inputs.write(image_file + ',' + ','.join(map(str, self.keyboard_controller_data)) + '\n')
 
-    # Convert PIL Image to NumPy array
-    frame_np = np.array(self.frame)
-    # Convert RGB to BGR
-    frame_np = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
+  #### PREPROCESS ####
+  def pre_process(self):
+    print("Preparing data")
+    image_files = np.loadtxt(f"{self.sample_path}/inputs.csv", delimiter=',', dtype=str, usecols=(0,))
 
-    cv2.imwrite(image_file, frame_np)
-    #self.inputs.write(f"{image_file},{','.join(map(str, self.keyboard_controller_data))}")
-    self.frames_info.append(self.keyboard_controller_data)
+    #count samples
+    num_samples = len(image_files)
+    print(f"Found {num_samples} samples")
 
-  #### TRAIN ####
+    #init arrays
+    y = np.loadtxt(f"{self.sample_path}/inputs.csv", delimiter=',', usecols=(1,2,3)) 
+    X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT), dtype=np.float32)
+
+    #prepare input data (images)
+    for idx, image_file in enumerate(image_files):
+      print(f"Processing image {idx+1}/{num_samples}")
+      image = imread(image_file)
+      vec = resize_image(image, SAMPLE)
+      X[idx] = vec
+
+    print("Saving to file...")
+
+    np.save(f"{self.data_path}/X.npy", X)
+    np.save(f"{self.data_path}/y.npy", y)
+
+    print("Done!")
+
   def train(self):
+    print("STARTING TRAINING")
     # Load Training Data
-    x_train = np.load("./X.npy")
-    y_train = np.load("pata/y.npy")
+    x_train = np.load(f"{self.data_path}/X.npy")
+    y_train = np.load(f"{self.data_path}/y.npy")
 
     print(x_train.shape[0], 'train samples')
 
@@ -166,48 +164,42 @@ class Agent:
     epochs = 100
     batch_size = 50
 
-    model = create_model(input_shape=INPUT_SHAPE, output_shape=OUT_SHAPE)
+    self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
     
-    checkpoint = ModelCheckpoint('model_weights.h3', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
+    checkpoint = ModelCheckpoint('model_weights.h5', monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     callbacks_list = [checkpoint]
     
-    model.compile(loss=customized_loss, optimizer=optimizers.Adam())
-    model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, shuffle=True, validation_split=0.1, callbacks=callbacks_list)
+    self.model.compile(loss=customized_loss, optimizer=optimizers.Adam())
+    self.model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, shuffle=True, validation_split=0.1, callbacks=callbacks_list)
 
   #### PLAY ####
   def play(self):
-    self.model = create_model(keep_prob=1, input_shape=INPUT_SHAPE, output_shape=OUT_SHAPE)
-    self.model.load_weights("model_weights.h3")
+    # Load the trained model
+    model = create_model(keep_prob=1, sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
+    model.load_weights('model_weights.h5')
 
-    print("Press H to start playing")
-    while not len(read_keys([ord("H")])):
-      continue
+    # Play the game
+    while True:
+      # Get the current state
+      self.take_screenshot()
+      state = resize_image(self.screenshot, SAMPLE)
+      state = np.expand_dims(state, axis=0)
 
-    print("Starting playing in 3 seconds...")
-    time.sleep(3)
+      # Use the model to predict the next state
+      action = model.predict(state, batch_size=1)
 
-    flag = False
-    while not len(read_keys([ord("H")])):
-      #get physical controller state
-      if any(self.wheel_controller.read()):
-        if not flag:
-          flag = True
-          print("Physical input detected")
+      # Round the first value in the action array to the nearest integer
+      action[0][0] = np.round(action[0][0])
 
-        self.emulator.sync_controller()
-        time.sleep(0.1)
-        continue
-      flag = False
+      # Limit the values of the other two elements to 0 or 1
+      action[0][1:] = np.clip(np.round(action[0][1:]), 0, 1)
 
-      #make prediction
-      self.get_frame()
-      self.resize_frame()
+      # Scale the first value to be either -1, 0 or 1
+      action[0][0] = np.sign(action[0][0])
 
-      vec = np.expand_dims(self.frame, axis=0)
-      self.prediction = self.model.predict(vec, batch_size=1)
+      action = action[0]
 
-      #apply prediction to virtual controller
-      #use random prediction for now
+      print(action)
 
-      print("Ai input detected: ", self.prediction)
-      self.emulator.step(self.prediction)
+      # Send the predicted action to the emulator
+      self.emulator.step(action)
