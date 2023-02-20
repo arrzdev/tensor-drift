@@ -192,13 +192,17 @@ class Agent:
         self.emulator.sync_controller()
         continue
 
-      # Get the current state
-      ss = self.take_screenshot()
-      state = resize_image(ss, SAMPLE)
-      state = np.expand_dims(state, axis=0)
+      # capture the game screen
+      ss = screenshot(self.game_region)
+
+      # preprocess the screenshot
+      ss = resize_image(ss, SAMPLE)
+
+      # predict the action to take
+      model_input = np.expand_dims(ss, axis=0)
 
       # Use the model to predict the next state
-      action = model.predict(state, batch_size=1)
+      action = model.predict(model_input, batch_size=1)
 
       # Round the first value in the action array to the nearest integer
       action[0][0] = np.round(action[0][0])
