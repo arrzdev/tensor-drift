@@ -1,5 +1,6 @@
 *.pyc
 *.npy
+utils/__pycache__/
 model.ckpt*
 checkpoint
 samples/**
