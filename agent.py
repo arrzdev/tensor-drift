@@ -148,8 +148,8 @@ class Agent:
       num_processed = X.shape[::][0]
       X.resize((num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT))
     except:
-        X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT), dtype=np.float32)
-        num_processed = 0
+      X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT), dtype=np.float32)
+      num_processed = 0
 
     y = np.loadtxt(f"{self.sample_path}/inputs.csv", delimiter=',', usecols=(1,2,3)) 
 
@@ -175,8 +175,8 @@ class Agent:
     print(x_train.shape[0], 'train samples')
 
     # Training loop variables
-    epochs = 150
-    batch_size = 30
+    epochs = 100
+    batch_size = 50
 
     #check if model exists
     if os.path.exists(self.model_path):
@@ -186,7 +186,7 @@ class Agent:
         print("Continuing from last model")
       else:
         #delete dir
-        os.remove(self.model_path)
+        shutil.rmtree(self.model_path, ignore_errors=True)
         #create dir
         print("Creating new model")
         self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
