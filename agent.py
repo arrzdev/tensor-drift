@@ -129,17 +129,6 @@ class Agent:
             return
           # use image object for model
           self.framesc += 1
-
-  def take_screenshot(self):
-    hwnd = win32gui.GetForegroundWindow()
-    rect = win32gui.GetWindowRect(hwnd)
-    x, y, width, height = rect
-    x += 10  # Remove the left bar
-    y += 32  # Increase the y value to remove the top bar
-    width -= 16
-    height -= 50  # Decrease the height to remove the top bar and bottom taskbar
-    screenshot = ImageGrab.grab(bbox=(x, y, x + width, y + height))
-    return screenshot
   
   def save_data(self):
     image_file = f"{self.sample_path}/img_{self.framesc}{IMAGE_TYPE}"
