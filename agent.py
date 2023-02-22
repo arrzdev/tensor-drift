@@ -1,11 +1,8 @@
 import os 
-from PIL import Image
 import numpy as np  
 import shutil
 import time
 import cv2
-import win32api
-import win32con
 import win32gui
 import time
 from PIL import ImageGrab
@@ -19,6 +16,7 @@ from tensorflow.keras.models import load_model
 
 ####
 from utils.screen import screenshot
+from utils.pytesseract import get_game_data
 from utils.imaging import resize_image
 from utils.wheel import WheelController
 from utils.keyboard import KeyboardController, read_keys 
@@ -40,6 +38,7 @@ SAMPLE = {
   "img_d": 3
 }
 
+INPUT = 5
 OUTPUT = 3
 
 class Agent:
@@ -59,59 +58,81 @@ class Agent:
 
     self.keyboard_controller_data = [0, 0, 0]
 
+    #speed grid
+    self.speed_grid = {
+      "x": 3500,
+      "y": 1625,
+      "w": 200,
+      "h": 100
+    }
+
+    self.angle_grid = {
+      "x": 1850,
+      "y": 1825,
+      "w": 125,
+      "h": 115
+    }
+
+    self.angle_side_grid = {
+      "x": 3100, #3100 #3020
+      "y": 1720,
+      "w": 70, #70
+      "h": 10
+    }
+
 ### RECORDING ###
   def record(self):
     # check that a dir has been specified
     if not self.sample_path:
-        print("WRONG OUTPUT DIR")
-        return
+      print("WRONG OUTPUT DIR")
+      return
 
     if os.path.exists(self.sample_path):
         if not prompt("Directory already exists. Overwrite? (y/n)"):
-            #continue from last frame
-            for file in os.listdir(self.sample_path):
-                if file.endswith(IMAGE_TYPE):
-                    frame_index = int(file.split("_")[-1].split(".")[0])
-                    if frame_index >= self.framesc:
-                        self.framesc = frame_index + 1
-            if self.framesc > 0:
-                print(f"Continuing from frame {self.framesc}")
+          #continue from last frame
+          for file in os.listdir(self.sample_path):
+            if file.endswith(IMAGE_TYPE):
+              frame_index = int(file.split("_")[-1].split(".")[0])
+              if frame_index >= self.framesc:
+                self.framesc = frame_index + 1
+          if self.framesc > 0:
+            print(f"Continuing from frame {self.framesc}")
         else:
-            #delete dir
-            shutil.rmtree(self.sample_path, ignore_errors=True)
-            #create dir
-            os.mkdir(self.sample_path)
+          #delete dir
+          shutil.rmtree(self.sample_path, ignore_errors=True)
+          #create dir
+          os.mkdir(self.sample_path)
     else:
-        #create dir
-        os.mkdir(self.sample_path)
+      #create dir
+      os.mkdir(self.sample_path)
 
     # open file
     inputs_path = f"{self.sample_path}/inputs.csv"
     with open(inputs_path, "a") as self.inputs:
-        # wait for H to start recording
-        print("Press H to start recording.")
-        while True:
-            keys = read_keys([ord("H")])
-            if keys:
-                if self.recording:  # already recording
-                    print("Recording stopped.")
-                    self.recording = False
-                    return
-                else:  # start recording
-                    print("Starting recording in 3 seconds...")
-                    time.sleep(3)
-                    print("Recording started.")
-                    self.recording = True
+      # wait for H to start recording
+      print("Press H to start recording.")
+      while True:
+        keys = read_keys([ord("H")])
+        if keys:
+          if self.recording:  # already recording
+            print("Recording stopped.")
+            self.recording = False
+            return
+          else:  # start recording
+            print("Starting recording in 3 seconds...")
+            time.sleep(3)
+            print("Recording started.")
+            self.recording = True
 
-            if self.recording:
-                self.screenshot = screenshot(self.game_region)
-                self.keyboard_controller_data = self.keyboard_controller.read() # read controller data
-                print(self.keyboard_controller_data)
-                if not self.save_data():
-                    print("Error saving data")
-                    return
-                # use image object for model
-                self.framesc += 1
+        if self.recording:
+          self.screenshot = screenshot(self.game_region)
+          self.keyboard_controller_data = self.keyboard_controller.read() # read controller data
+          print(self.keyboard_controller_data)
+          if not self.save_data():
+            print("Error saving data")
+            return
+          # use image object for model
+          self.framesc += 1
 
   def take_screenshot(self):
     hwnd = win32gui.GetForegroundWindow()
@@ -146,9 +167,9 @@ class Agent:
     try:
       X = np.load(f"{self.data_path}/X.npy")
       num_processed = X.shape[::][0]
-      X.resize((num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT))
+      X.resize((num_samples, SAMPLE["img_h"], SAMPLE["img_w"], SAMPLE["img_d"]))
     except:
-      X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], OUTPUT), dtype=np.float32)
+      X = np.empty(shape=(num_samples, SAMPLE["img_h"], SAMPLE["img_w"], SAMPLE["img_d"]), dtype=np.float32)
       num_processed = 0
 
     y = np.loadtxt(f"{self.sample_path}/inputs.csv", delimiter=',', usecols=(1,2,3)) 
@@ -157,6 +178,25 @@ class Agent:
     for i in range(num_processed, num_samples):
       print(f"Processing image {i+1}/{num_samples}")
       image = imread(image_files[i])
+      speed, angle = get_game_data(image, self.speed_grid, self.angle_grid, self.angle_side_grid)
+
+      #normalize speed and angle to match rgb color
+      nspeed = (speed/200)*255
+      nangle = (angle/180)*255
+
+      #color the image using cv2 and rgb values
+      image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+      #add speed as R channel since speed is 
+      image = np.stack((image,)*3, axis=-1)
+      image[:,:,0] = nspeed
+
+      #decide in which channel will the angle be encoded based on the side of the car
+      if angle <= 0:
+        image[:,:,2] = abs(nangle)
+      else:
+        image[:,:,1] = nangle
+
       image = resize_image(image, SAMPLE)
       X[i] = image
 
@@ -189,13 +229,18 @@ class Agent:
         shutil.rmtree(self.model_path, ignore_errors=True)
         #create dir
         print("Creating new model")
-        self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
-  
+        self.model = create_model(SAMPLE, OUTPUT)
+    else:
+      #create dir
+      print("Creating new model")
+      self.model = create_model(sinput=tuple(SAMPLE.values()), soutput=OUTPUT)
+
     #set up callbacks 
     checkpoint = ModelCheckpoint(self.model_path, monitor='val_loss', verbose=1, save_best_only=True, mode='min')
     
     self.model.compile(loss=customized_loss, optimizer=optimizers.Adam())
     self.model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, shuffle=True, validation_split=0.1, callbacks=[checkpoint])
+
 
   #### PLAY ####
   def play(self):
@@ -206,18 +251,40 @@ class Agent:
     # Play the game
     while True:
       if any(self.wheel_controller.read()):
-        print("User interacting with the wheel. Ignoring AI prediction.")
+        #print("User interacting with the wheel. Ignoring AI prediction.")
         self.emulator.sync_controller()
         continue
 
       # capture the game screen
       ss = screenshot(self.game_region)
 
-      # preprocess the screenshot
-      ss = resize_image(ss, SAMPLE)
+      speed, angle = get_game_data(ss, self.speed_grid, self.angle_grid, self.angle_side_grid)
+
+      print(angle)
+
+      #normalize speed and angle to match rgb color
+      nspeed = (speed/200)*255
+      nangle = (angle/180)*255
+
+      #color the image using cv2 and rgb values
+      image = cv2.cvtColor(ss, cv2.COLOR_BGR2GRAY)
+
+      #add speed as R channel since speed is 
+      image = np.stack((image,)*3, axis=-1)
+      image[:,:,0] = nspeed
+
+      #decide in which channel will the angle be encoded based on the side of the car
+      if angle <= 0:
+        image[:,:,2] = abs(nangle)
+      else:
+        image[:,:,1] = nangle
+      """"""
+
+      # preprocess the screpenshot
+      image = resize_image(image, SAMPLE)
 
       # predict the action to take
-      model_input = np.expand_dims(ss, axis=0)
+      model_input = np.expand_dims(image, axis=0)
 
       # Use the model to predict the next state
       action = model.predict(model_input, batch_size=1)
@@ -233,7 +300,7 @@ class Agent:
 
       action = action[0]
 
-      print(action)
+      print(f"Predicted action: {action} (steer, gas, brake)")
 
       # Send the predicted action to the emulator
       self.emulator.step(action)

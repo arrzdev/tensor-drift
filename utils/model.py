@@ -1,8 +1,10 @@
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, Model
 from tensorflow.keras.layers import Conv2D
-from tensorflow.keras.layers import Dense, Dropout, Flatten
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Input
 from tensorflow.keras import backend as K
 import tensorflow as tf
+from keras import optimizers
+
 
 def create_model(keep_prob=0.8 , sinput=None, soutput=None):
   model = Sequential()
@@ -26,6 +28,7 @@ def create_model(keep_prob=0.8 , sinput=None, soutput=None):
   model.add(Dense(soutput, activation='softsign'))
 
   return model
+
 
 def customized_loss(y_true, y_pred, loss='euclidean'):
   # Simply a mean squared error that penalizes large joystick summed values
