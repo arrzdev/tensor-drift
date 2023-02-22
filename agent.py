@@ -7,9 +7,6 @@ import win32gui
 import time
 from PIL import ImageGrab
 
-#idk
-import mss
-
 from keras import optimizers
 from tensorflow.keras.callbacks import ModelCheckpoint
 from tensorflow.keras.models import load_model
@@ -48,7 +45,6 @@ class Agent:
     self.game_region = (0, 25, 1920, 1030)
     self.model_path = "./model_weights.h3"
 
-    self.screenshot_manager = mss.mss()
     self.framesc = 0
     self.recording = False
 
