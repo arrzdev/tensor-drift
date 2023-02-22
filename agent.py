@@ -182,7 +182,7 @@ class Agent:
 
       #normalize speed and angle to match rgb color
       nspeed = (speed/200)*255
-      nangle = (angle/180)*255
+      nangle = (abs(angle)/180)*255
 
       #color the image using cv2 and rgb values
       image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -193,7 +193,7 @@ class Agent:
 
       #decide in which channel will the angle be encoded based on the side of the car
       if angle <= 0:
-        image[:,:,2] = abs(nangle)
+        image[:,:,2] = nangle
       else:
         image[:,:,1] = nangle
 
@@ -264,7 +264,7 @@ class Agent:
 
       #normalize speed and angle to match rgb color
       nspeed = (speed/200)*255
-      nangle = (angle/180)*255
+      nangle = (abs(angle)/180)*255
 
       #color the image using cv2 and rgb values
       image = cv2.cvtColor(ss, cv2.COLOR_BGR2GRAY)
@@ -275,10 +275,9 @@ class Agent:
 
       #decide in which channel will the angle be encoded based on the side of the car
       if angle <= 0:
-        image[:,:,2] = abs(nangle)
+        image[:,:,2] = nangle
       else:
         image[:,:,1] = nangle
-      """"""
 
       # preprocess the screpenshot
       image = resize_image(image, SAMPLE)
