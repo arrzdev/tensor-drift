@@ -25,9 +25,9 @@ class EmulatorEngine():
     elif state[0] == -1:
       self.controller.write(action=mode, key="wheel_left")
 
-    #throttle
+    #gas
     if state[1] == 1:
-      self.controller.write(action=mode, key="throttle")
+      self.controller.write(action=mode, key="gas")
 
     #brake
     if state[2] == 1:

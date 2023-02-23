@@ -72,12 +72,12 @@ def read_keys(fkeys):
 class KeyboardController():
   def __init__(self):
     self.sterring = 0 # -1 or 1
-    self.throttle = 0 # 0 or 1
+    self.gas = 0 # 0 or 1
     self.brake = 0 # 0 or 1
 
     #filtered keys
     self.keyboard_mapping = {
-      "throttle": (win32con.VK_UP, 0xC8),
+      "gas": (win32con.VK_UP, 0xC8),
       "brake": (win32con.VK_DOWN, 0xD0),
       "wheel_left": (win32con.VK_LEFT, 0xCB),
       "wheel_right": (win32con.VK_RIGHT, 0xCD)
@@ -91,7 +91,7 @@ class KeyboardController():
   returns the current state of the physical controller
   """
   def read(self):
-    return [self.sterring, self.throttle, self.brake]
+    return [self.sterring, self.gas, self.brake]
 
   """
   injector of keystrokes
@@ -110,7 +110,7 @@ class KeyboardController():
     filter_keys = [v[0] for v in self.keyboard_mapping.values()]
     while True:
       event_keys = read_keys(filter_keys)
-      self.throttle = 1 if self.keyboard_mapping["throttle"][0] in event_keys else 0
+      self.gas = 1 if self.keyboard_mapping["gas"][0] in event_keys else 0
       self.brake = 1 if self.keyboard_mapping["brake"][0] in event_keys else 0
       self.sterring = -1 if self.keyboard_mapping["wheel_left"][0] in event_keys else 1 if self.keyboard_mapping["wheel_right"][0] in event_keys else 0
 

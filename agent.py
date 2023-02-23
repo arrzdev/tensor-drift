@@ -20,6 +20,7 @@ from utils.keyboard import KeyboardController, read_keys
 from utils.interact import prompt
 from utils.model import create_model, customized_loss
 from utils.emulator import EmulatorEngine
+from utils import logic_layer
 
 ###
 from skimage.io import imread
@@ -43,7 +44,7 @@ class Agent:
     self.sample_path = "./samples"
     self.data_path = "./data"
     self.game_region = (0, 25, 1920, 1030)
-    self.model_path = "./model_weights.h3"
+    self.model_path = "./model_weights.h5"
 
     self.framesc = 0
     self.recording = False
@@ -245,8 +246,6 @@ class Agent:
 
       speed, angle = get_game_data(ss, self.speed_grid, self.angle_grid, self.angle_side_grid)
 
-      print(angle)
-
       #normalize speed and angle to match rgb color
       nspeed = (speed/200)*255
       nangle = (abs(angle)/180)*255
@@ -284,7 +283,10 @@ class Agent:
 
       action = action[0]
 
-      print(f"Predicted action: {action} (steer, gas, brake)")
+      print(action)
 
+      logic_action = logic_layer.apply(action, speed, angle)
+      print(logic_action)
+      
       # Send the predicted action to the emulator
-      self.emulator.step(action)
+      self.emulator.step(logic_action)
